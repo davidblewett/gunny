@@ -41,20 +41,18 @@ class WebSocketStreamingEncoder(object):
 
     producer = None
     streaming = None
+    write_pos = 0
 
-    def __init__(self, proto, size):
+    def __init__(self, proto, path):
         self.proto = proto
-        self.size = size
+        self.path = path
         self.reactor = proto.transport.reactor
+        self.size = proto.file_path.getsize()
 
     def registerProducer(self, producer, streaming):
         log.msg('registerProducer: %s, %s' % (producer, streaming))
         self.producer = producer
         self.streaming = streaming
-        #self.proto.transport.registerProducer(producer, streaming)
-        self.proto.beginMessage(binary=True)
-        log.msg('getsize: %s' % self.size)
-        self.proto.beginMessageFrame(self.size)
         if not self.streaming:
             # NOTE: we use callLater to avoid possibly exceeding
             #       maximum recursion depth
@@ -67,15 +65,28 @@ class WebSocketStreamingEncoder(object):
         self.streaming = None
 
     def write(self, data):
-        rest = self.proto.sendMessageFrameData(data)
-        log.msg('sending frame bytes: %s/%s' % (len(data), rest))
-        self.proto.resume_count -= 1
-        #log.msg('self.streaming: %r' % self.streaming)
-        #log.msg('self.proto.paused: %r' % self.proto.paused)
-        #if not self.streaming and not self.proto.paused:
-        #    # NOTE: we use callLater to avoid possibly exceeding
-        #    #       maximum recursion depth
-        #    self.reactor.callLater(0, self.producer.resumeProducing)
+        # FIXME: refactor this to use callbacks
+        self.proto.beginMessage(binary=True)
+        log.msg('beginMessageFrame: %d' % len(self.path))
+        self.proto.beginMessageFrame(len(self.path))
+        log.msg('sendMessageFrameData: %s' % self.path)
+        self.proto.sendMessageFrameData(self.path)
+        log.msg('beginMessageFrame: %d' % len(str(self.size)))
+        self.proto.beginMessageFrame(len(str(self.size)))
+        log.msg('sendMessageFrameData: %s' % str(self.size))
+        self.proto.sendMessageFrameData(str(self.size))
+        log.msg('beginMessageFrame: %d' % len(data))
+        self.proto.beginMessageFrame(len(data))
+        self.proto.sendMessageFrameData(data)
+        self.proto.endMessage()
+        self.write_pos += len(data)
+        log.msg('Sent frame bytes for %s: %d/%d/%d' % (self.path,
+                                                       len(data),
+                                                       self.write_pos,
+                                                       self.size))
+
+    def __len__(self):
+        return self.size
 
 
 class WscpServerProtocol(WebSocketServerProtocol):
@@ -83,9 +94,8 @@ class WscpServerProtocol(WebSocketServerProtocol):
     Streaming WebSockets server that transmits the contents of a local file
     """
 
-    consumer = None
-    paused = False
-    resume_count = 0
+    def __init__(self):
+        self.file_encoders = {}
 
     def _path(self, path):
         combined_path = reduce(filepath.FilePath.child, path,
@@ -126,42 +136,29 @@ class WscpServerProtocol(WebSocketServerProtocol):
         args = message.split('|')
         if args[0].upper() == 'GET':
             return self.onFileGet(args[1])
-        elif args[0].upper() == 'PAUSE':
-            return self.onPauseProducing()
         elif args[0].upper() == 'RESUME':
-            return self.onResumeProducing()
+            return self.onResumeProducing(args[1])
         elif args[0].upper() == 'STOP':
-            return self.onStopProducing()
+            return self.onStopProducing(args[1])
 
-    def onPauseProducing(self):
-        log.msg('Pausing production.')
-        self.paused = True
-        if self.consumer is not None:
-            self.consumer.producer.pauseProducing()
-            #self.factory.reactor.callLater(0, self.consumer.producer.pauseProducing)
-    def onResumeProducing(self):
-        self.resume_count += 1
-        log.msg('Resuming production: %d' % self.resume_count)
-        self.paused = False
-        if self.consumer is not None:
-            self.consumer.producer.resumeProducing()
-            #self.factory.reactor.callLater(0, self.consumer.producer.resumeProducing)
+    def onResumeProducing(self, path):
+        log.msg('Resuming production: %s' % path)
+        if self.file_encoders[path] is not None:
+            self.file_encoders[path].producer.resumeProducing()
 
-    def onStopProducing(self):
-        log.msg('Stopping production.')
-        self.paused = False
-        if self.consumer is not None:
-            self.consumer.producer.stopProducing()
-            #self.factory.reactor.callLater(0, self.consumer.producer.stopProducing)
+    def onStopProducing(self, path):
+        log.msg('Stopping production: %s.' % path)
+        if self.file_encoders[path] is not None:
+            self.file_encoders[path].producer.stopProducing()
+            del self.file_encoders[path]
 
     @inlineCallbacks
-    def onFileGet(self, filename):
-        log.msg('Sending file: %s' % filename)
-        file_reader = yield self.sendFile(filename)
+    def onFileGet(self, path):
+        log.msg('Sending file: %s' % path)
+        file_reader = yield self.sendFile(path)
         log.msg('file_reader: %s' % file_reader)
-        self.consumer = WebSocketStreamingEncoder(self,
-                                                  self.file_path.getsize())
-        last_sent = yield file_reader.send(self.consumer)
+        self.file_encoders[path] = WebSocketStreamingEncoder(self, path)
+        last_sent = yield file_reader.send(self.file_encoders[path])
         log.msg('last_sent: %r' % last_sent)
         defer.returnValue(last_sent)
 

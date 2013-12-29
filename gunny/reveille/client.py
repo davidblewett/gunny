@@ -1,7 +1,8 @@
 from collections import deque
-import os
 from io import BufferedRandom
 from io import BytesIO
+import os
+import sys
 
 from zope.interface import implements
 
@@ -35,38 +36,75 @@ class WebSocketDecoder(BufferedRandom):
     producer = None
     streaming = None
     write_pos = 0
+    closed = False
+    _length = 0
+
+    def __init__(self, proto, path, buf=None):
+        if buf is None:
+            buf = BufferedRandom(BytesIO())
+        self._buffer = buf
+        self.proto = proto
+        self.path = path
 
     def registerProducer(self, producer, streaming):
-        #log.msg('registerProducer: %s, %s' % (producer, streaming))
+        log.msg('registerProducer: %s, %s' % (producer, streaming))
         self.producer = producer
         self.streaming = streaming
         if not self.streaming:
-            self.producer.resumeProducing()
+            self.producer.resumeProducing(self.path)
 
     def unregisterProducer(self):
-        #log.msg('unregisterProducer')
+        log.msg('unregisterProducer')
         self.producer = None
         self.streaming = None
 
     def write(self, data):
+        #log.msg('write: %d' % len(data))
         curr_pos = self.tell()
         self.seek(0, os.SEEK_END)
-        num_bytes = BufferedRandom.write(self, data)
+        num_bytes = self._buffer.write(data)
         self.write_pos += num_bytes
         self.seek(curr_pos, os.SEEK_SET)
-        if self.write_pos - curr_pos < BUFFER_SIZE:
-            #log.msg('Buffer short: resume')
-            self.producer.resumeProducing()
+        self.checkBuffer(curr_pos)
         return num_bytes
 
     def read(self, n=-1):
-        data = BufferedRandom.read(self, n)
-        curr_pos = self.tell()
-        curr_buf = self.write_pos - curr_pos
-        if curr_buf < BUFFER_SIZE:
-            #log.msg('Buffer short: resume %d' % curr_buf)
-            self.producer.resumeProducing()
+        data = self._buffer.read(n)
+        self.checkBuffer()
         return data
+
+    def seek(self, pos, whence=0):
+        return self._buffer.seek(pos, whence)
+
+    def tell(self):
+        pos = self._buffer.tell()
+        #log.msg('tell: %d' % pos)
+        return pos
+
+    def readinto(self, buf):
+        data = self.read(len(buf))
+        dlen = len(data)
+        buf[:dlen] = data
+        return dlen
+
+    def checkBuffer(self, pos=None):
+        if pos is None:
+            pos = self.tell()
+        #log.msg('checkBuffer: %d' % pos)
+        if self.write_pos - pos < self.proto.buffer_size:
+            log.msg('Buffer short: resume %d' % (self.write_pos - pos))
+            self.producer.resumeProducing(self.path)
+
+    def close(self):
+        self.write_pos = 0
+        self._buffer.truncate(0)
+        self.closed = True
+
+    def __len__(self):
+        return self._length
+
+    def __unicode__(self):
+        return u'<WebSocketDecoder "%s">' % self.path
 
 
 def chunks(s, n):
@@ -97,7 +135,7 @@ class WebSocketStreamingDecoder(object):
         self.read_pos = 0
 
     def __len__(self):
-        #log.msg('__len__: %d' % self.length)
+        log.msg('__len__: %d' % self.length)
         return self.length
 
     def seek(self, offset, whence=os.SEEK_SET):
@@ -120,14 +158,14 @@ class WebSocketStreamingDecoder(object):
         return self.read_pos
 
     def registerProducer(self, producer, streaming):
-        #log.msg('registerProducer: %s, %s' % (producer, streaming))
+        log.msg('registerProducer: %s, %s' % (producer, streaming))
         self.producer = producer
         self.streaming = streaming
         if not self.streaming:
-            self.producer.resumeProducing()
+            self.producer.resumeProducing(self.path)
 
     def unregisterProducer(self):
-        #log.msg('unregisterProducer')
+        log.msg('unregisterProducer')
         self.producer = None
         self.streaming = None
 
@@ -149,11 +187,8 @@ class WebSocketStreamingDecoder(object):
             remaining_data = self._packBuffer(self.remaining)
             self.write_deferred.callback(remaining_data)
             self.write_deferred = None
-        if len(self.buflist) >= self.proto.buffer_blocks:
-            #log.msg('Buffer full: pausing')
-            self.producer.pauseProducing()
         elif not self.streaming:
-            self.producer.resumeProducing()
+            self.producer.resumeProducing(self.path)
         return len(data)
 
     def _waitForData(self, n):
@@ -183,7 +218,7 @@ class WebSocketStreamingDecoder(object):
         # If we didn't accumulate enough data, defer until filled
         if curr_pos < n:
             pass
-            #log.msg("Didn't accumulate enough data for read")
+            log.msg("Didn't accumulate enough data for read")
         #    data = yield self._waitForData(n-curr_pos)
         #    dlen = len(data)
         #    ret_val[curr_pos:dlen] = data
@@ -205,12 +240,12 @@ class WebSocketStreamingDecoder(object):
             ret_val = self._packBuffer(n)
         self.read_pos += len(ret_val)
         if len(self.buflist) < self.proto.buffer_blocks:
-            #log.msg('Buffer short: resume')
-            self.producer.resumeProducing()
+            log.msg('Buffer short: resume')
+            self.producer.resumeProducing(self.path)
         #defer.returnValue(ret_val)
-        #log.msg('read: %d. %d/%d' % (len(ret_val),
-        #                             len(self.buflist),
-        #                             self.proto.buffer_blocks))
+        log.msg('read: %d. %d/%d' % (len(ret_val),
+                                     len(self.buflist),
+                                     self.proto.buffer_blocks))
         return ret_val
 
     def readinto(self, buf):
@@ -229,85 +264,86 @@ class WebSocketStreamingDecoder(object):
         return sum(map(len, self.buflist))
 
 
+(WSCP_PATH, WSCP_SIZE, WSCP_DATA) = range(3)
+
+
 class WscpClientProtocol(WebSocketClientProtocol):
     """
-    WebSockets client that streams a file from the server
+    WebSockets client that streams files from the server
     """
     implements(interfaces.IPushProducer)
 
     open_deferred = None
     buffer_filled = None
-    paused = False
-    consumer = None
-    resume_count = 0
+    frame_num = WSCP_PATH
+    path = None
 
-    def __init__(self, buffer_blocks=BUFFER_BLOCKS):
+    def __init__(self, buffer_size=BUFFER_SIZE):
         self.open_deferred = defer.Deferred()
-        self.buffer_blocks = buffer_blocks
+        self.buffer_size = buffer_size
+        self.file_decoders = {}
 
-    def pauseProducing(self):
-        #log.msg('Sending PAUSE')
-        self.sendMessage('PAUSE')
-        self.paused = True
+    def sendCommand(self, command, *args):
+        log.msg('Sending %s: %r' % (command, args))
+        cmd = [command]
+        cmd.extend(args)
+        self.sendMessage('|'.join(cmd))
 
-    def resumeProducing(self):
-        self.resume_count += 1
-        #log.msg('Sending RESUME: %d' % self.resume_count)
-        self.sendMessage('RESUME')
-        self.paused = False
+    def resumeProducing(self, path):
+        self.sendCommand('RESUME', path)
 
-    def stopProducing(self):
-        ##log.msg('Sending STOP')
-        self.sendMessage('STOP')
+    def stopProducing(self, path):
+        self.sendCommand('STOP', path)
 
     def getFile(self, path):
-        #log.msg('getFile: %s' % path)
-        self.sendMessage('%s|%s' % ('GET', path))
         self.buffer_filled = defer.Deferred()
+        self.file_decoders[path] = WebSocketDecoder(self, path)
+        self.sendCommand('GET', path)
         return self.buffer_filled
+
+    def seek(self, pos, whence=0):
+        self.sendCommand('SEEK', str(pos), str(whence))
 
     def onOpen(self):
         self.open_deferred.callback(self)
         self.open_deferred = None
 
-    def onMessage(self, message, binary):
-        #log.msg('onMessage: %s' % message)
-        pass
-
     def onMessageBegin(self, opcode):
-        #log.msg('onMessageBegin')
+        log.msg('onMessageBegin')
         WebSocketClientProtocol.onMessageBegin(self, opcode)
 
     def onMessageFrameBegin(self, length, reserved):
         #log.msg('onMessageFrameBegin: %s' % length)
         WebSocketClientProtocol.onMessageFrameBegin(self, length, reserved)
-        if self.buffer_filled is not None:
-            #self.consumer = WebSocketStreamingDecoder(self, length)
-            self.consumer = WebSocketDecoder(BytesIO())
-            self.consumer._length = length
-            self.consumer.registerProducer(self, True)
+        if self.frame_num == WSCP_DATA and self.buffer_filled is not None:
+            self.file_decoders[self.path].registerProducer(self, True)
 
     def onMessageFrameData(self, data):
-        ##log.msg('Received chunk: %d / %d / %d' % (len(data), self.consumer.write_pos, self.consumer.length))
-        #log.msg('Received chunk: %d' % (len(data),))
-        self.resume_count -= 1
-        if self.consumer is not None:
-            curr_pos = self.consumer.tell()
-            self.consumer.write(data)
-            #log.msg('Buffered: %d/%d' % (self.consumer.write_pos - curr_pos, BUFFER_SIZE))
+        #log.msg('Received chunk: %d / %d / %d' % (len(data), self.file_decoders[path].write_pos, self.file_decoders[path].length))
+        if self.frame_num == WSCP_PATH:
+            #log.msg('Frame path: %s' % (data, ))
+            self.path = data
+        elif self.frame_num == WSCP_SIZE:
+            #log.msg('File total size: %s' % (data, ))
+            self.file_decoders[self.path]._length = long(data)
+        elif self.frame_num == WSCP_DATA and self.file_decoders[self.path] is not None:
+            log.msg('Received chunk %s: %d' % (self.path, len(data),))
+            curr_pos = self.file_decoders[self.path].tell()
+            self.file_decoders[self.path].write(data)
+            buffered_bytes = self.file_decoders[self.path].write_pos - curr_pos
+            log.msg('Buffered: %d/%d' % (buffered_bytes,
+                                         self.buffer_size))
             if self.buffer_filled is not None and \
-               self.consumer.write_pos - curr_pos >= BUFFER_SIZE:
-                # We wait for first block before returning the consumer
-                self.buffer_filled.callback(self.consumer)
+               buffered_bytes >= self.buffer_size:
+                # We wait for first block before returning the decoder
+                self.buffer_filled.callback(self.file_decoders[self.path])
                 self.buffer_filled = None
 
     def onMessageFrameEnd(self):
-        if self.consumer is not None:
-            #log.msg('Received file, length: %d' % self.consumer.write_pos)
-            self.consumer = None
+        self.frame_num += 1
 
     def onMessageEnd(self):
-        pass
+        self.frame_num = WSCP_PATH
 
 
 class WscpClientFactory(WebSocketClientFactory):
@@ -339,7 +375,7 @@ class ReveilleClientProtocol(WampClientProtocol):
         self.open_deferred = None
 
     def onSessionOpen(self):
-        #log.msg('onSessionOpen')
+        log.msg('onSessionOpen')
         self.onClientAdd()
 
     def connectionLost(self, reason):
@@ -348,7 +384,8 @@ class ReveilleClientProtocol(WampClientProtocol):
         WampClientProtocol.connectionLost(self, reason)
 
     def onClientAdd(self):
-        #log.msg('onClientAdd')
+        log.msg('onClientAdd')
+        # FIXME: parse existing connection URL and change path
         factory = self.subprotocolFactory(
             self,
             #url="ws://192.168.1.2:9876/stream",
@@ -363,6 +400,7 @@ class ReveilleClientProtocol(WampClientProtocol):
     def onWscpOpen(self, wcsp):
         self.wcsp = wcsp
         self.player = Player()
+        #self.enqueue('01.flac')
 
     @inlineCallbacks
     @exportRpc
@@ -402,14 +440,14 @@ class ReveilleClientProtocol(WampClientProtocol):
         self.play()
 
     @exportRpc
-    def resumeProducing(self):
+    def resumeProducing(self, path):
         if self.wscp is not None:
-            self.wscp.resumeProducing()
+            self.wscp.resumeProducing(path)
 
     @exportRpc
-    def stopProducing(self):
+    def stopProducing(self, path):
         if self.wscp is not None:
-            self.wscp.stopProducing()
+            self.wscp.stopProducing(path)
 
 
 class ReveilleClientFactory(WampClientFactory):
@@ -432,13 +470,7 @@ class ReveilleCommandProtocol(basic.LineReceiver):
                       # for use with Telnet
 
     def __init__(self, factory_class=ReveilleClientFactory, **kwargs):
-        factory = factory_class(self,
-            #"ws://192.168.1.2:9876/reveille",
-            "ws://127.0.0.1:9876/reveille",
-            #debug=debug,
-            #debugCodePaths=debug,
-        )
-        connectWS(factory)
+        self.factory_class = factory_class
 
     def onReveilleOpen(self, reveille):
         self.reveille = reveille
@@ -485,11 +517,20 @@ class ReveilleCommandProtocol(basic.LineReceiver):
         self.reveille.enqueue(file_name)
         #self.sendLine("Success: got %i bytes." % len(pageData))
 
+    def do_play(self):
+        self.reveille.play()
+
     def do_toggle(self):
         self.reveille.playPause()
 
     def do_stop(self):
         self.reveille.stopPlaying()
+
+    def do_prev(self):
+        self.reveille.previousTrack()
+
+    def do_next(self):
+        self.reveille.nextTrack()
 
     def connectionLost(self, reason):
         # stop the reactor, only because this is meant to be run in Stdio.
@@ -515,5 +556,15 @@ class ReveilleCommandFactory(ReveilleClientFactory):
 
 
 if __name__ == '__main__':
+    log.startLogging(sys.stderr)
     stdio.StandardIO(ReveilleCommandProtocol())
+    #factory = WampClientFactory(
+    #    #"ws://192.168.1.2:9876/reveille",
+    #    "ws://127.0.0.1:9876/reveille",
+    #    #debug=debug,
+    #    #debugCodePaths=debug,
+    #)
+    #factory.protocol = ReveilleClientProtocol
+    #connectWS(factory)
+
     reactor.run()
