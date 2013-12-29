@@ -22,15 +22,8 @@ from pysoundfile import SoundFile
 from gunny.player import Player
 
 
-# FIXME: use cffi to pull from header:
-# 2013-11-30 09:45:21< arigato> BlueAidan:   cdef("""#define FOO ...""")
-# 2013-11-30 09:45:33< arigato> lib = ffi.verify(stuff)
-# 2013-11-30 09:45:35< arigato> lib.FOO
-BLOCK_SIZE = 8192
 # FIXME: refactor to buffer based on seek points
 # Not a hard limit; more of a high-water mark
-# 4MB
-BUFFER_BLOCKS = 512
 BUFFER_SIZE = 32 * 1024
 
 
