@@ -372,19 +372,34 @@ class ReveilleClientProtocol(WampClientProtocol):
         self.player.enqueue(fObj)
 
     @exportRpc
+    def play(self):
+        log.msg('play')
+        self.player.play()
+
+    @exportRpc
     def playPause(self):
-        #log.msg('playPause')
+        log.msg('playPause')
         self.player.toggle_play_pause()
 
     @exportRpc
     def stopPlaying(self):
-        #log.msg('playPause')
+        log.msg('stopPlaying')
         self.player.stop_playing()
 
     @exportRpc
-    def pauseProducing(self):
-        if self.wscp is not None:
-            self.wscp.pauseProducing()
+    def nextTrack(self):
+        log.msg('nextTrack')
+        self.stopPlaying()
+        self.player.play()
+
+    @inlineCallbacks
+    @exportRpc
+    def previousTrack(self):
+        log.msg('previousTrack')
+        prev = self.player.played.pop()
+        self.stopPlaying()
+        fObj = yield self.enqueue(prev.path)
+        self.play()
 
     @exportRpc
     def resumeProducing(self):
