@@ -1,3 +1,5 @@
+from collections import deque
+
 from twisted.internet import defer
 from twisted.internet.task import cooperate
 from twisted.python import log
@@ -24,6 +26,7 @@ class Player(object):
         #self.stream = Stream(callback=self.stream_callback)
         self.stream = Stream()
         self.queue = defer.DeferredQueue()
+        self.played = deque()
 
     def enqueue(self, track):
         #self.queue.put(track)
@@ -79,9 +82,17 @@ class Player(object):
     def stop_playing(self):
         if self.task is not None:
             self.task.stop()
-        if self.state > PLAYER_STOPPED and self.stream.is_active():
-            self.stream.stop()
+            self.task = None
+        if self.state > PLAYER_STOPPED:
+            self.state = PLAYER_STOPPED
+            if self.stream.is_active():
+                self.stream.stop()
         self.set_progress(0, 1)
+        if self.track is not None:
+            self.track = None
+            self.fObj.close()
+            self.played.append(self.fObj)
+            self.fObj = None
 
     def stream_callback(self, in_data, frame_count, time_info, status):
         # This method doesn't seem to play nice with Twisted.
@@ -105,9 +116,7 @@ class Player(object):
             self.stream.write(frame)
             return frame_len
         else:
-            self.state = PLAYER_STOPPED
-            self.set_progress(0, 1)
-            return 0
+            self.stop_playing()
 
     def set_progress(self, current, total):
         self.progress[0] = current
