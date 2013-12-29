@@ -7,20 +7,38 @@ from twisted.python import log
 from twisted.python import usage
 from twisted.application.service import IServiceMaker
 
-from autobahn.wamp import WampClientFactory, WampClientProtocol
-from autobahn.websocket import connectWS
+from gunny.reveille.client import ReveilleCommandFactory
+from gunny.reveille.client import ReveilleCommandProtocol
+from gunny.reveille.service import CoxswainService
 
-from gunny.reveille.client import ReveilleClientProtocol
-from gunny.reveille.service import PlayerService
+
+class EnqueueOptions(usage.Options):
+    optParameters = [
+        ['file', 'f', None, None],
+    ]
+
+    def __init__(self):
+        usage.Options.__init__(self)
+        self['files'] = []
+
+    def opt_file(self, fname):
+        self['files'].append(fname)
+
+    opt_f = opt_file
+
+
+class ToggleOptions(usage.Options):
+    optParameters = []
 
 
 class Options(usage.Options):
-    optFlags = [
-        ['nodaemon','n',  "don't daemonize, don't use default umask of 0077"],
+    subCommands = [
+        ['enqueue', None, EnqueueOptions, "Queue File(s)"],
+        ['toggle', None, ToggleOptions, "Toggle play/pause"],
     ]
     optParameters = [
         ["host", "h", '127.0.0.1', "The host to connect to."],
-        ["port", "p", 9876, "The port number to connect to."],
+        ["port", "p", 9876, "The port number to connect to.", int],
     ]
 
 
@@ -37,11 +55,8 @@ class CoxswainMaker(object):
         #log.startLogging(sys.stderr)
         url = "ws://%s:%s/ws" % (options["host"], options["port"])
         log.msg('URL: %s' % url)
-        factory = WampClientFactory(url)
-        factory.protocol = ReveilleClientProtocol
-        import pdb; pdb.set_trace()  # NOQA
-        #return connectWS(factory)
-        return PlayerService(factory)
+        factory = ReveilleCommandFactory(ReveilleCommandProtocol(), url)
+        return factory.startFactory()
 
 
 # Now construct an object which *provides* the relevant interfaces
