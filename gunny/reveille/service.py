@@ -1,27 +1,22 @@
-from twisted.application import internet
 from twisted.application.service import Service
-from twisted.internet import reactor
+from twisted.internet import stdio
 
 from autobahn.websocket import connectWS
 
 
-class ControlService(Service):
-    pass
-
-
-class PlayerService(Service):
+class CoxswainService(Service):
 
     def __init__(self, factory):
         self.factory = factory
         self.conn = None
 
     def startService(self):
-        self.factory.startFactory()
+        #self.factory(ReveilleCommandProtocol())
         self.conn = connectWS(self.factory)
-        self.running = 1
+        self.running = True
 
     def stopService(self):
         self.factory.stopFactory()
         if self.conn is not None:
             self.conn.disconnect()
-        self.running = 0
+        self.running = False
