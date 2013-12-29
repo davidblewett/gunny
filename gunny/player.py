@@ -18,6 +18,7 @@ class Player(object):
         """
         """
 
+        self.fObj = None
         self.track = None  # the currently playing SoundFile
         self.buffer_size = 0  # the number of PCM frames to process
         self.state = PLAYER_STOPPED
@@ -25,12 +26,11 @@ class Player(object):
         self.task = None
         #self.stream = Stream(callback=self.stream_callback)
         self.stream = Stream()
-        self.queue = defer.DeferredQueue()
+        self.queue = deque()
         self.played = deque()
 
-    def enqueue(self, track):
-        #self.queue.put(track)
-        self.track = track
+    def enqueue(self, fObj):
+        self.queue.append(fObj)
 
     def close(self):
         self.stop_playing()
@@ -55,6 +55,15 @@ class Player(object):
                 self.state = PLAYER_PLAYING
             elif (self.state == PLAYER_PLAYING):
                 pass
+
+    def next_track(self):
+        self.stop_playing()
+        self.play()
+
+    def previous_track(self):
+        self.queue.appendleft(self.played.pop())
+        self.stop_playing()
+        self.play()
 
     def toggle_play_pause(self):
         if (self.state == PLAYER_PLAYING):
