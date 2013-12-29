@@ -16,7 +16,6 @@ from autobahn.wamp import WampClientFactory, WampClientProtocol
 
 from gunny.reveille.server import ReveilleServerFactory
 from gunny.reveille.server import WscpServerFactory
-from gunny.reveille.service import PlayerService
 
 
 class Options(usage.Options):
