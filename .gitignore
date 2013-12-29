@@ -1,4 +1,6 @@
 *.py[cod]
+*.pid
+dropin.cache
 
 # C extensions
 *.so
@@ -34,7 +36,6 @@ nosetests.xml
 .mr.developer.cfg
 .project
 .pydevproject
-<<<<<<< HEAD
 
 # Complexity
 output/*.html
