@@ -17,8 +17,6 @@ from autobahn.websocket import WebSocketClientFactory
 from autobahn.websocket import WebSocketClientProtocol
 from autobahn.websocket import connectWS
 
-from pysoundfile import SoundFile
-
 from gunny.player import Player
 
 
@@ -367,12 +365,10 @@ class ReveilleClientProtocol(WampClientProtocol):
 
     @inlineCallbacks
     @exportRpc
-    def enqueue(self, file_name):
-        #log.msg('playTrack: %s' % file_name)
-        fObj = yield self.wcsp.getFile(file_name)
-        #log.msg(fObj)
-        flac = SoundFile(fObj, virtual_io='stream')
-        self.player.enqueue(flac)
+    def enqueue(self, path):
+        log.msg('enqueue: %s' % path)
+        fObj = yield self.wcsp.getFile(path)
+        self.player.enqueue(fObj)
 
     @exportRpc
     def playPause(self):

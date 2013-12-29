@@ -3,6 +3,7 @@ from twisted.internet.task import cooperate
 from twisted.python import log
 
 from pysoundcard import Stream, continue_flag, complete_flag
+from pysoundfile import SoundFile
 
 
 (PLAYER_STOPPED, PLAYER_PAUSED, PLAYER_PLAYING) = range(3)
@@ -38,8 +39,10 @@ class Player(object):
             self.state = PLAYER_PAUSED
 
     def play(self):
-        log.msg('track: %s' % self.track)
-        log.msg('state: %s' % self.state)
+        log.msg('Play: %r, %d' % (self.track, len(self.queue)))
+        if self.track is None and self.queue:
+            self.fObj = self.queue.popleft()
+            self.track = SoundFile(self.fObj, virtual_io=True)
         if (self.track is not None):
             if (self.state == PLAYER_STOPPED):
                 self.start_playing()
