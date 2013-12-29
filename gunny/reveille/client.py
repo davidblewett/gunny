@@ -5,6 +5,7 @@ from io import BytesIO
 
 from zope.interface import implements
 
+from twisted.application.internet import UNIXServer
 from twisted.internet import stdio, reactor, defer, interfaces
 from twisted.internet.defer import inlineCallbacks
 from twisted.protocols import basic
@@ -478,6 +479,24 @@ class ReveilleCommandProtocol(basic.LineReceiver):
     def connectionLost(self, reason):
         # stop the reactor, only because this is meant to be run in Stdio.
         reactor.stop()
+
+
+class ReveilleCommandFactory(ReveilleClientFactory):
+
+    protocol = ReveilleCommandProtocol
+
+    def buildProtocol(self, addr):
+        proto = ReveilleClientFactory.buildProtocol(self, addr)
+        factory = proto.factory_class(self,
+            #"ws://192.168.1.2:9876/reveille",
+            "ws://127.0.0.1:9876/reveille",
+            #debug=debug,
+            #debugCodePaths=debug,
+        )
+        connectWS(factory)
+
+    def startFactory(self):
+        return UNIXServer('/tmp/rcp.sock', self)
 
 
 if __name__ == '__main__':
