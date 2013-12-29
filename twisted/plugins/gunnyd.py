@@ -36,9 +36,7 @@ class GunnyMaker(object):
         Construct a TCPServer from a factory defined in myproject.
         """
 
-        from twisted.internet import reactor
-        ws_factory = ReveilleServerFactory(reactor,
-                                           "ws://localhost:%d" % options["port"])
+        ws_factory = ReveilleServerFactory("ws://localhost:%d" % options["port"])
         ws_factory.setProtocolOptions(allowHixie76=True)
         ## need to start manually, see https://github.com/tavendo/AutobahnPython/issues/133
         ws_factory.startFactory()
@@ -47,8 +45,7 @@ class GunnyMaker(object):
         ## Twisted Web resource for our WAMP factory
         ws_resource = WebSocketResource(ws_factory)
 
-        stream_factory = WscpServerFactory(reactor,
-                                           "ws://localhost:%d" % options["port"],
+        stream_factory = WscpServerFactory("ws://localhost:%d" % options["port"],
                                            #'/data/music_archive',
                                            '/Users/davidb/src')
         stream_factory.setProtocolOptions(allowHixie76=True)

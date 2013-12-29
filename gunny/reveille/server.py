@@ -44,8 +44,8 @@ class WebSocketStreamingEncoder(object):
 
     def __init__(self, proto, size):
         self.proto = proto
-        self.reactor = proto.factory.reactor
         self.size = size
+        self.reactor = proto.transport.reactor
 
     def registerProducer(self, producer, streaming):
         log.msg('registerProducer: %s, %s' % (producer, streaming))
@@ -198,9 +198,8 @@ class ReveilleServerFactory(WampServerFactory):
 
     protocol = ReveilleServerProtocol
 
-    def __init__(self, reactor, url, debugWamp=False):
+    def __init__(self, url, debugWamp=False):
         WampServerFactory.__init__(self, url, debugWamp=debugWamp)
-        self.reactor = reactor
 
         ## the key-value store resides on the factory object, since it is to
         ## be shared among all client connections
@@ -211,8 +210,7 @@ class WscpServerFactory(WebSocketServerFactory):
 
     protocol = WscpServerProtocol
 
-    def __init__(self, reactor, url, fsRoot, debugWamp=False):
-        self.reactor = reactor
+    def __init__(self, url, fsRoot, debugWamp=False):
         self.filesystemRoot = filepath.FilePath(fsRoot)
         WebSocketServerFactory.__init__(self, url)
 
@@ -227,9 +225,7 @@ if __name__ == '__main__':
 
     port = 9876
 
-    from twisted.internet import reactor
-    ws_factory = ReveilleServerFactory(reactor,
-                                       "ws://localhost:%d" % port,
+    ws_factory = ReveilleServerFactory("ws://localhost:%d" % port,
                                        debugWamp=debug)
     ws_factory.setProtocolOptions(allowHixie76=True)
     ## need to start manually, see https://github.com/tavendo/AutobahnPython/issues/133
@@ -239,8 +235,7 @@ if __name__ == '__main__':
     ## Twisted Web resource for our WAMP factory
     ws_resource = WebSocketResource(ws_factory)
 
-    stream_factory = WscpServerFactory(reactor,
-                                       "ws://localhost:%d" % port,
+    stream_factory = WscpServerFactory("ws://localhost:%d" % port,
                                        #'/data/music_archive',
                                        '/Users/davidb/src',
                                        debugWamp=debug)
