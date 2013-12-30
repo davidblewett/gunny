@@ -7,8 +7,8 @@ from twisted.python import log
 from twisted.python import usage
 from twisted.application.service import IServiceMaker
 
-from gunny.reveille.client import ReveilleCommandFactory
-from gunny.reveille.client import ReveilleCommandProtocol
+from gunny.reveille.coxswain import ReveilleCommandFactory
+from gunny.reveille.coxswain import ReveilleCommandProtocol
 from gunny.reveille.service import CoxswainService
 
 
