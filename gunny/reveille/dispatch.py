@@ -3,10 +3,13 @@ import sys
 
 from zope.interface import implements
 
-from twisted.internet import reactor, defer, interfaces
+from twisted.internet import defer
+from twisted.internet import interfaces
+from twisted.internet import reactor
 from twisted.internet.defer import inlineCallbacks
 from twisted.protocols import ftp
-from twisted.python import log, filepath
+from twisted.python import filepath
+from twisted.python import log
 from twisted.web.server import Site
 from twisted.web.static import File
 
