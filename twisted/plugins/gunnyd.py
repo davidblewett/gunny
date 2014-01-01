@@ -14,8 +14,8 @@ from autobahn.resource import HTTPChannelHixie76Aware
 from autobahn.resource import WebSocketResource
 from autobahn.wamp import WampClientFactory, WampClientProtocol
 
-from gunny.reveille.gunny import ReveilleServerFactory
-from gunny.reveille.gunny import WscpServerFactory
+from gunny.reveille.dispatch import ReveilleServerFactory
+from gunny.reveille.dispatch import WscpServerFactory
 
 
 class Options(usage.Options):

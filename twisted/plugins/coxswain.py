@@ -1,14 +1,15 @@
-import sys
 
 from zope.interface import implements
 
+from twisted.application.internet import UNIXClient
 from twisted.plugin import IPlugin
 from twisted.python import log
 from twisted.python import usage
 from twisted.application.service import IServiceMaker
 
-from gunny.reveille.command import ReveilleCommandFactory
-from gunny.reveille.command import ReveilleCommandProtocol
+from autobahn.wamp import WampClientFactory
+
+from gunny.reveille.coxswain import ReveilleClientProtocol
 from gunny.reveille.service import CoxswainService
 
 
@@ -41,6 +42,9 @@ class Options(usage.Options):
         ["port", "p", 9876, "The port number to connect to.", int],
     ]
 
+    def parseArgs(self):
+        pass
+
 
 class CoxswainMaker(object):
     implements(IServiceMaker, IPlugin)
@@ -50,17 +54,14 @@ class CoxswainMaker(object):
 
     def makeService(self, options):
         """
-        Construct a TCPServer from a factory defined in myproject.
+        Construct a UNIXClient from a factory defined in myproject.
         """
         #log.startLogging(sys.stderr)
-        url = "ws://%s:%s/ws" % (options["host"], options["port"])
-        log.msg('URL: %s' % url)
-        factory = ReveilleCommandFactory(ReveilleCommandProtocol(), url)
-        return factory.startFactory()
+        return UNIXClient('/tmp/rcp.sock')
 
 
 # Now construct an object which *provides* the relevant interfaces
 # The name of this variable is irrelevant, as long as there is *some*
 # name bound to a provider of IPlugin and IServiceMaker.
 
-coxswaind = CoxswainMaker()
+coxswain = CoxswainMaker()
