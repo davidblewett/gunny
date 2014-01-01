@@ -26,8 +26,7 @@ from autobahn.websocket import WebSocketProtocol
 
 class ReveilleServerProtocol(WampServerProtocol):
     """
-    Demonstrates creating a server with Autobahn WebSockets that provides
-    a persistent key-value store which can we access via RPCs.
+    Demonstrates creating a server with Autobahn WebSockets
     """
 
     #def onSessionOpen(self):
