@@ -52,4 +52,4 @@ the most. It is responsible for submitting search requests to the
 ``gunnyd`` daemon, submitting requests for file data to the ``flakd``
 daemon and actually playing back music files to the local soundcard.
 It runs in the background, and the user submits commands to it via
-the ``coxswain`` CLI script.
+the ``cox`` CLI script.

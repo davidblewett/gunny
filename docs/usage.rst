@@ -32,10 +32,10 @@ The ``coxswaind`` daemon runs where you would like the music to play::
     2013-12-29 15:48:33-0500 [-] ReveilleCommandFactory starting on '/tmp/rcp.sock'
     2013-12-29 15:48:33-0500 [-] Starting factory <gunny.reveille.client.ReveilleCommandFactory instance at 0x10441d998>
 
-Submit commands to ``coxswaind`` via the ``coxswain`` script::
+Submit commands to ``coxswaind`` via the ``cox`` script::
 
     (gunny)
-    dhmo% coxswain shell
+    dhmo% cox shell
     Reveille command console. Type 'help' for help.
     enqueue 01.flac
     play
