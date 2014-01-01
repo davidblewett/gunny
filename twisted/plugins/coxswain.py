@@ -9,7 +9,7 @@ from twisted.application.service import IServiceMaker
 
 from autobahn.wamp import WampClientFactory
 
-from gunny.reveille.coxswain import ReveilleClientProtocol
+from gunny.reveille.command import ReveilleClientProtocol
 from gunny.reveille.service import CoxswainService
 
 
